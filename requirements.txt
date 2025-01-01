@@ -1,7 +1,8 @@
+fastapi
+pydantic
+typing
+langchain_community
+langgraph
+langchain_groq
+uvicorn
 streamlit
-requests
-duckduckgo-search
-newspaper4k
-lxml_html_clean
-phidata
-google-generativeai
