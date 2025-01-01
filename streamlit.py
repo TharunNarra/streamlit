@@ -1,23 +1,23 @@
 import streamlit as st
-import requests
-
-# Set up the Gemini API Key (replace 'your_gemini_api_key' with the actual key)
-GEMINI_API_KEY = "AIzaSyCOMRugTZFUHkKrg3vxSMZlAQ_eugZz6so"
-GEMINI_API_URL = "https://api.gemini.example/v1/chat"
-
-import streamlit as st
 from phi.agent import Agent
 from phi.tools.hackernews import HackerNews
 from phi.tools.duckduckgo import DuckDuckGo
 from phi.tools.newspaper4k import Newspaper4k
 from phi.model import Gemini
 
+# API Key and URL
+GEMINI_API_KEY = "AIzaSyCOMRugTZFUHkKrg3vxSMZlAQ_eugZz6so"
+GEMINI_API_URL = "https://api.gemini.example/v1/chat"
+
+# Initialize Gemini Model with API Key and URL
+gemini_model = Gemini(id="gemini-1.5-flash", api_key=GEMINI_API_KEY, api_url=GEMINI_API_URL)
+
 # Initialize the tools and agents
 hn_researcher = Agent(
     name="HackerNews Researcher",
     role="Gets top stories from hackernews.",
     tools=[HackerNews()],
-    model=Gemini(id="gemini-1.5-flash"),
+    model=gemini_model,
 )
 
 web_searcher = Agent(
@@ -25,14 +25,14 @@ web_searcher = Agent(
     role="Searches the web for information on a topic",
     tools=[DuckDuckGo()],
     add_datetime_to_instructions=True,
-    model=Gemini(id="gemini-1.5-flash"),
+    model=gemini_model,
 )
 
 article_reader = Agent(
     name="Article Reader",
     role="Reads articles from URLs.",
     tools=[Newspaper4k()],
-    model=Gemini(id="gemini-1.5-flash"),
+    model=gemini_model,
 )
 
 hn_team = Agent(
@@ -47,7 +47,7 @@ hn_team = Agent(
     ],
     show_tool_calls=True,
     markdown=True,
-    model=Gemini(id="gemini-1.5-flash"),
+    model=gemini_model,
 )
 
 # Streamlit App
@@ -60,5 +60,3 @@ if st.button("Get Top Stories and Write an Article"):
         response = hn_team.print_response("Write an article about the top 2 stories on hackernews", stream=True)
         st.success("Article generated successfully!")
         st.markdown(response)
-
-
