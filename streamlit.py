@@ -5,6 +5,7 @@ from phi.tools.duckduckgo import DuckDuckGo
 from phi.tools.newspaper4k import Newspaper4k
 from phi.llm import LLM
 import google.generativeai as genai
+import os
 
 # Page configuration
 st.set_page_config(
@@ -33,19 +34,18 @@ if 'processing' not in st.session_state:
     st.session_state.processing = False
 if 'article' not in st.session_state:
     st.session_state.article = None
+if 'api_key_configured' not in st.session_state:
+    st.session_state.api_key_configured = False
 
-GEMINI_API_KEY="AIzaSyCOMRugTZFUHkKrg3vxSMZlAQ_eugZz6so"
-
-def initialize_agents():
+def initialize_agents(api_key):
     try:
         # Configure Gemini
-        GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
-        genai.configure(api_key=GEMINI_API_KEY)
+        genai.configure(api_key=api_key)
         
         # Initialize custom LLM for Gemini
         llm = LLM(
             name="gemini-pro",
-            api_key=GEMINI_API_KEY,
+            api_key=api_key,
             template_format="f-string",
             template="{instruction}\n{input}",
             stream=True,
@@ -94,9 +94,9 @@ def initialize_agents():
         st.error(f"Error initializing agents: {str(e)}")
         return None
 
-def generate_article(num_stories, topic=None):
+def generate_article(api_key, num_stories, topic=None):
     """Generate article with progress tracking"""
-    hn_team = initialize_agents()
+    hn_team = initialize_agents(api_key)
     if not hn_team:
         return None
     
@@ -120,32 +120,41 @@ This app uses AI agents to analyze top stories from HackerNews and generate comp
 The agents search, read, and synthesize information from multiple sources.
 """)
 
-# User inputs
-col1, col2 = st.columns(2)
-with col1:
-    num_stories = st.slider("Number of stories to analyze", 1, 5, 2)
-with col2:
-    topic = st.text_input("Optional: Focus on a specific topic", "")
+# API Key Configuration
+api_key = st.text_input("Enter your Gemini API Key:", type="password")
+if api_key:
+    st.session_state.api_key_configured = True
 
-# Generate button
-if st.button("Generate Insights", type="primary"):
-    st.session_state.processing = True
-    st.session_state.article = generate_article(num_stories, topic)
+# Only show the main interface if API key is configured
+if st.session_state.api_key_configured:
+    # User inputs
+    col1, col2 = st.columns(2)
+    with col1:
+        num_stories = st.slider("Number of stories to analyze", 1, 5, 2)
+    with col2:
+        topic = st.text_input("Optional: Focus on a specific topic", "")
 
-# Display results
-if st.session_state.article:
-    st.success("✅ Analysis completed successfully!")
-    with st.expander("📝 Generated Article", expanded=True):
-        st.markdown(st.session_state.article)
-    
-    # Export options
-    if st.download_button(
-        label="Download Article",
-        data=st.session_state.article,
-        file_name="hackernews_insights.md",
-        mime="text/markdown"
-    ):
-        st.toast("Article downloaded successfully!")
+    # Generate button
+    if st.button("Generate Insights", type="primary"):
+        st.session_state.processing = True
+        st.session_state.article = generate_article(api_key, num_stories, topic)
+
+    # Display results
+    if st.session_state.article:
+        st.success("✅ Analysis completed successfully!")
+        with st.expander("📝 Generated Article", expanded=True):
+            st.markdown(st.session_state.article)
+        
+        # Export options
+        if st.download_button(
+            label="Download Article",
+            data=st.session_state.article,
+            file_name="hackernews_insights.md",
+            mime="text/markdown"
+        ):
+            st.toast("Article downloaded successfully!")
+else:
+    st.info("Please enter your Gemini API key to start using the app.")
 
 # Footer
 st.markdown("---")
