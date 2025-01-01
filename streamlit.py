@@ -1,158 +1,66 @@
-import streamlit as st
-from phi.agent import Agent
-from phi.tools.hackernews import HackerNews
-from phi.tools.duckduckgo import DuckDuckGo
-from phi.tools.newspaper4k import Newspaper4k
-from phi.llm import LLM
-import google.generativeai as genai
+# Import necessary modules and setup for FastAPI, LangGraph, and LangChain
+from fastapi import FastAPI  # FastAPI framework for creating the web application
+from pydantic import BaseModel  # BaseModel for structured data data models
+from typing import List  # List type hint for type annotations
+from langchain_community.tools.tavily_search import TavilySearchResults  # TavilySearchResults tool for handling search results from Tavily
+import os  # os module for environment variable handling
+from langgraph.prebuilt import create_react_agent  # Function to create a ReAct agent
+from langchain_groq import ChatGroq  # ChatGroq class for interacting with LLMs
 
-# Page configuration
-st.set_page_config(
-    page_title="HackerNews Insights",
-    page_icon="📰",
-    layout="wide"
-)
 
-# Custom CSS
-st.markdown("""
-    <style>
-    .stButton>button {
-        width: 100%;
-        margin-top: 1rem;
-    }
-    .status-box {
-        padding: 1rem;
-        border-radius: 0.5rem;
-        margin: 1rem 0;
-    }
-    </style>
-    """, unsafe_allow_html=True)
+# Retrieve and set API keys for external tools and services
+groq_api_key = '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'  # Groq API key
+os.environ["TAVILY_API_KEY"] = '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'  # Set Tavily API key
 
-# Initialize session state
-if 'processing' not in st.session_state:
-    st.session_state.processing = False
-if 'article' not in st.session_state:
-    st.session_state.article = None
+# Predefined list of supported model names
+MODEL_NAMES = [
+    "llama3-70b-8192",  # Model 1: Llama 3 with specific configuration
+    "mixtral-8x7b-32768"  # Model 2: Mixtral with specific configuration
+]
 
-# Main app interface
-st.title("📰 HackerNews Insights Generator")
-st.markdown("""
-This app uses AI agents to analyze top stories from HackerNews and generate comprehensive summaries.
-The agents search, read, and synthesize information from multiple sources.
-""")
+# Initialize the TavilySearchResults tool with a specified maximum number of results.
+tool_tavily = TavilySearchResults(max_results=2)  # Allows retrieving up to 2 results
 
-# API Key input
-api_key = st.text_input("Enter your Gemini API Key:", type="password", value="AIzaSyCOMRugTZFUHkKrg3vxSMZlAQ_eugZz6so")
 
-def initialize_agents(api_key):
-    if not api_key:
-        st.error("Please enter your Gemini API key")
-        return None
-    
-    try:
-        # Configure Gemini
-        genai.configure(api_key=api_key)
-        
-        # Initialize custom LLM for Gemini
-        llm = LLM(
-            model="gemini-pro",  # Specify the model
-            api_key=api_key,
-            template_format="f-string",
-            template="{instruction}\n{input}",
-            stream=True,
-            provider="google",  # Specify the provider
-            base_url="https://generativelanguage.googleapis.com/v1/models/gemini-pro:generateContent"
-        )
-        
-        # Initialize agents
-        hn_researcher = Agent(
-            name="HackerNews Researcher",
-            role="Gets top stories from hackernews.",
-            tools=[HackerNews()],
-            llm=llm,
-        )
+# Combine the TavilySearchResults and ExecPython tools into a list.
+tools = [tool_tavily, ]
 
-        web_searcher = Agent(
-            name="Web Searcher",
-            role="Searches the web for information on a topic",
-            tools=[DuckDuckGo()],
-            add_datetime_to_instructions=True,
-            llm=llm,
-        )
+# FastAPI application setup with a title
+app = FastAPI(title='LangGraph AI Agent')
 
-        article_reader = Agent(
-            name="Article Reader",
-            role="Reads articles from URLs.",
-            tools=[Newspaper4k()],
-            llm=llm,
-        )
+# Define the request schema using Pydantic's BaseModel
+class RequestState(BaseModel):
+    model_name: str  # Name of the model to use for processing the request
+    system_prompt: str  # System prompt for initializing the model
+    messages: List[str]  # List of messages in the chat
 
-        hn_team = Agent(
-            name="Hackernews Team",
-            team=[hn_researcher, web_searcher, article_reader],
-            instructions=[
-                "First, search hackernews for what the user is asking about.",
-                "Then, ask the article reader to read the links for the stories to get more information.",
-                "Important: you must provide the article reader with the links to read.",
-                "Then, ask the web searcher to search for each story to get more information.",
-                "Finally, provide a thoughtful and engaging summary.",
-            ],
-            show_tool_calls=True,
-            markdown=True,
-            llm=llm,
-        )
-        
-        return hn_team
-    except Exception as e:
-        st.error(f"Error initializing agents: {str(e)}")
-        return None
+# Define an endpoint for handling chat requests
+@app.post("/chat")
+def chat_endpoint(request: RequestState):
+    """
+    API endpoint to interact with the chatbot using LangGraph and tools.
+    Dynamically selects the model specified in the request.
+    """
+    if request.model_name not in MODEL_NAMES:
+        # Return an error response if the model name is invalid
+        return {"error": "Invalid model name. Please select a valid model."}
 
-def generate_article(num_stories, topic=None):
-    """Generate article with progress tracking"""
-    hn_team = initialize_agents(api_key)
-    if not hn_team:
-        return None
-    
-    try:
-        query = f"Write an article about the top {num_stories} stories"
-        if topic:
-            query += f" related to {topic}"
-        query += " on hackernews"
-        
-        with st.spinner("🤖 AI agents are analyzing HackerNews..."):
-            response = hn_team.print_response(query, stream=True)
-            return response
-    except Exception as e:
-        st.error(f"Error generating article: {str(e)}")
-        return None
+    # Initialize the LLM with the selected model
+    llm = ChatGroq(groq_api_key=groq_api_key, model_name=request.model_name)
 
-# User inputs
-col1, col2 = st.columns(2)
-with col1:
-    num_stories = st.slider("Number of stories to analyze", 1, 5, 2)
-with col2:
-    topic = st.text_input("Optional: Focus on a specific topic", "")
+    # Create a ReAct agent using the selected LLM and tools
+    agent = create_react_agent(llm, tools=tools, state_modifier=request.system_prompt)
 
-# Generate button
-if st.button("Generate Insights", type="primary"):
-    st.session_state.processing = True
-    st.session_state.article = generate_article(num_stories, topic)
+    # Create the initial state for processing
+    state = {"messages": request.messages}
 
-# Display results
-if st.session_state.article:
-    st.success("✅ Analysis completed successfully!")
-    with st.expander("📝 Generated Article", expanded=True):
-        st.markdown(st.session_state.article)
-    
-    # Export options
-    if st.download_button(
-        label="Download Article",
-        data=st.session_state.article,
-        file_name="hackernews_insights.md",
-        mime="text/markdown"
-    ):
-        st.toast("Article downloaded successfully!")
+    # Process the state using the agent
+    result = agent.invoke(state)  # Invoke the agent (can be async or sync based on implementation)
 
-# Footer
-st.markdown("---")
-st.markdown("*Powered by Phi, Google Gemini, and Streamlit*")
+    # Return the result as the response
+    return result
+
+# Run the application if executed as the main script
+if __name__ == '__main__':
+    import uvicorn  # Import Uvicorn server for running the FastAPI app
+    uvicorn.run(app, host='127.0.0.1', port=8000)  # Start the app on localhost with port 8000
