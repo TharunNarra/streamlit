@@ -5,53 +5,60 @@ import requests
 GEMINI_API_KEY = "AIzaSyCOMRugTZFUHkKrg3vxSMZlAQ_eugZz6so"
 GEMINI_API_URL = "https://api.gemini.example/v1/chat"
 
-# Streamlit UI
-st.title("Streamlit Chat Application")
-st.subheader("Powered by Gemini API")
+import streamlit as st
+from phi.agent import Agent
+from phi.tools.hackernews import HackerNews
+from phi.tools.duckduckgo import DuckDuckGo
+from phi.tools.newspaper4k import Newspaper4k
+from phi.model import Gemini
 
-# Chat history
-if "messages" not in st.session_state:
-    st.session_state.messages = []
+# Initialize the tools and agents
+hn_researcher = Agent(
+    name="HackerNews Researcher",
+    role="Gets top stories from hackernews.",
+    tools=[HackerNews()],
+    model=Gemini(id="gemini-1.5-flash"),
+)
 
-# Display chat history
-for msg in st.session_state.messages:
-    role, text = msg
-    if role == "user":
-        st.markdown(f"**You:** {text}")
-    else:
-        st.markdown(f"**AI:** {text}")
+web_searcher = Agent(
+    name="Web Searcher",
+    role="Searches the web for information on a topic",
+    tools=[DuckDuckGo()],
+    add_datetime_to_instructions=True,
+    model=Gemini(id="gemini-1.5-flash"),
+)
 
-# User input
-user_input = st.text_input("Enter your message:", "", key="user_input")
+article_reader = Agent(
+    name="Article Reader",
+    role="Reads articles from URLs.",
+    tools=[Newspaper4k()],
+    model=Gemini(id="gemini-1.5-flash"),
+)
 
-if st.button("Send"):
-    if user_input.strip():
-        # Add user message to the chat history
-        st.session_state.messages.append(("user", user_input))
+hn_team = Agent(
+    name="Hackernews Team",
+    team=[hn_researcher, web_searcher, article_reader],
+    instructions=[
+        "First, search hackernews for what the user is asking about.",
+        "Then, ask the article reader to read the links for the stories to get more information.",
+        "Important: you must provide the article reader with the links to read.",
+        "Then, ask the web searcher to search for each story to get more information.",
+        "Finally, provide a thoughtful and engaging summary.",
+    ],
+    show_tool_calls=True,
+    markdown=True,
+    model=Gemini(id="gemini-1.5-flash"),
+)
 
-        # Send the user message to the Gemini API
-        try:
-            response = requests.post(
-                GEMINI_API_URL,
-                headers={"Authorization": f"Bearer {GEMINI_API_KEY}"},
-                json={"message": user_input}
-            )
-            response_data = response.json()
+# Streamlit App
+st.title("HackerNews Top Stories")
 
-            if response.status_code == 200:
-                ai_response = response_data.get("reply", "Sorry, I couldn't process that.")
-            else:
-                ai_response = f"Error: {response_data.get('error', 'Unknown error')}"
-        except Exception as e:
-            ai_response = f"Error: {str(e)}"
+st.write("This app uses the `phi` library to retrieve and summarize the top stories on HackerNews.")
 
-        # Add AI response to the chat history
-        st.session_state.messages.append(("ai", ai_response))
+if st.button("Get Top Stories and Write an Article"):
+    with st.spinner("Processing..."):
+        response = hn_team.print_response("Write an article about the top 2 stories on hackernews", stream=True)
+        st.success("Article generated successfully!")
+        st.markdown(response)
 
-        # Clear the input field
-        st.session_state.user_input = ""
-
-# Note for the user
-st.markdown("---")
-st.info("Messages are processed using the Gemini API. Ensure your API key is valid.")
 
