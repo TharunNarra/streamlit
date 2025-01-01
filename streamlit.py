@@ -55,11 +55,13 @@ def initialize_agents(api_key):
         
         # Initialize custom LLM for Gemini
         llm = LLM(
-            name="gemini-pro",
+            model="gemini-pro",  # Specify the model
             api_key=api_key,
             template_format="f-string",
             template="{instruction}\n{input}",
             stream=True,
+            provider="google",  # Specify the provider
+            base_url="https://generativelanguage.googleapis.com/v1/models/gemini-pro:generateContent"
         )
         
         # Initialize agents
